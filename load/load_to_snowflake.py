@@ -1,13 +1,15 @@
 """
 Load a raw MEPS CSV into Snowflake (RAW schema).
 
-Builds an all-VARCHAR landing table from the CSV header, stages the file,
-and COPYs it in. Raw landing keeps every column as text, faithful to the
-source; typing and filtering happen later in dbt. Verifies the loaded row
-count against the local file.
+Generic: loads any file we've landed in data/raw as <dataset>_<year>.csv
+into the table <DATASET>_<YEAR>. Builds an all-VARCHAR landing table from
+the CSV header, stages the file, and COPYs it in. Raw landing keeps every
+column as text, faithful to the source; typing happens later in dbt.
+Verifies the loaded row count against the local file.
 
 Usage (from the project root):
-    python load/load_to_snowflake.py 2021
+    python load/load_to_snowflake.py pmed 2021
+    python load/load_to_snowflake.py demographics 2021
 """
 import csv
 import os
@@ -22,13 +24,13 @@ load_dotenv()
 RAW_DIR = Path("data/raw")
 
 
-def load_year(year: int) -> None:
-    csv_path = RAW_DIR / f"pmed_{year}.csv"
+def load_dataset(dataset: str, year: int) -> None:
+    csv_path = RAW_DIR / f"{dataset}_{year}.csv"
     if not csv_path.exists():
         print(f"File not found: {csv_path}. Run the extractor first.")
         sys.exit(1)
 
-    table = f"PMED_{year}"
+    table = f"{dataset.upper()}_{year}"
 
     # Read only the header to build the table definition.
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -66,14 +68,16 @@ def load_year(year: int) -> None:
                 EMPTY_FIELD_AS_NULL = TRUE
             """
         )
-        cur.execute("CREATE OR REPLACE STAGE meps_stage FILE_FORMAT = meps_csv_format")
+        # One stage per table keeps staged files from colliding.
+        stage = f"stage_{dataset}_{year}"
+        cur.execute(f"CREATE OR REPLACE STAGE {stage} FILE_FORMAT = meps_csv_format")
 
         local_posix = csv_path.resolve().as_posix()
         print("Uploading file to the Snowflake stage (can take a minute) ...")
-        cur.execute(f"PUT file://{local_posix} @meps_stage OVERWRITE = TRUE")
+        cur.execute(f"PUT file://{local_posix} @{stage} OVERWRITE = TRUE")
 
         print("Copying staged file into the table ...")
-        cur.execute(f'COPY INTO "{table}" FROM @meps_stage')
+        cur.execute(f'COPY INTO "{table}" FROM @{stage}')
 
         cur.execute(f'SELECT COUNT(*) FROM "{table}"')
         loaded = cur.fetchone()[0]
@@ -88,7 +92,8 @@ def load_year(year: int) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python load/load_to_snowflake.py <year>")
+    if len(sys.argv) != 3:
+        print("Usage: python load/load_to_snowflake.py <dataset> <year>")
+        print("Example: python load/load_to_snowflake.py demographics 2021")
         sys.exit(1)
-    load_year(int(sys.argv[1]))
+    load_dataset(sys.argv[1], int(sys.argv[2]))
