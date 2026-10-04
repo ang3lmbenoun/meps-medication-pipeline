@@ -33,3 +33,5 @@ models:
   meps_analytics:
     staging:
       +materialized: view
+    marts:
+      +materialized: table
