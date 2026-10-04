@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: meps_raw
+    database: MEPS_PIPELINE
+    schema: RAW
+    tables:
+      - name: pmed_2021
+      - name: demographics_2021
