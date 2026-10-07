@@ -1,3 +1,5 @@
 ﻿pandas
 requests
 python-dotenv
+snowflake-connector-python<5
+groq
