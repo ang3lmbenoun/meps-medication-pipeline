@@ -1,75 +1,61 @@
 """
-MEPS Prescribed Medicines extractor.
+MEPS Prescribed Medicines extractor -- multi-year.
 
-Downloads a given year's Prescribed Medicines public-use file from AHRQ,
-parses it, validates the documented row count, tags the source year, and
-lands it as raw CSV in data/raw/.
+Downloads a year's Prescribed Medicines file, selects the columns we need,
+normalizes year-stamped names (RXXP21X -> RXXP_X, PERWT21F -> PERWT_F) to a
+stable schema, validates the documented row count, tags the year, and lands
+it as raw CSV.
 
-Usage (from the project root):
-    python extract/extract_meps.py 2021
+Usage:  python extract/extract_meps.py 2019
 """
-import sys
-import zipfile
+import sys, zipfile
 from pathlib import Path
-
 import pandas as pd
 import requests
 
-# Each year maps to its MEPS Prescribed Medicines public-use file.
-# Adding a year later is just another entry here.
 PMED_FILES = {
-    2021: {
-        "puf": "h229a",
-        "url": "https://meps.ahrq.gov/data_files/pufs/h229a/h229adta.zip",
-        "dta_file": "h229a.dta",
-        "expected_rows": 303394,
-    },
+    2017: {"puf": "h197a", "expected_rows": 310487},
+    2018: {"puf": "h206a", "expected_rows": 319666},
+    2019: {"puf": "h213a", "expected_rows": 293125},
+    2020: {"puf": "h220a", "expected_rows": 279755},
+    2021: {"puf": "h229a", "expected_rows": 303394},
 }
-
+STABLE = ["DUPERSID", "RXDRGNAM", "TC1", "RXDAYSUP", "RXQUANTY"]
+YEAR_STAMPED = {"RXXP{yy}X": "RXXP_X", "PERWT{yy}F": "PERWT_F"}
+OUTPUT_ORDER = ["DUPERSID","RXDRGNAM","TC1","RXDAYSUP","RXQUANTY","RXXP_X","PERWT_F"]
 RAW_DIR = Path("data/raw")
 
 
 def extract_year(year: int) -> Path:
     if year not in PMED_FILES:
-        raise ValueError(f"No config for year {year}. Known years: {list(PMED_FILES)}")
-
-    cfg = PMED_FILES[year]
+        raise ValueError(f"No config for year {year}. Known: {list(PMED_FILES)}")
+    cfg = PMED_FILES[year]; yy = str(year)[2:]
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-
+    url = f"https://meps.ahrq.gov/data_files/pufs/{cfg['puf']}/{cfg['puf']}dta.zip"
     zip_path = RAW_DIR / f"{cfg['puf']}.zip"
-    print(f"[{year}] Downloading {cfg['url']}")
-    resp = requests.get(cfg["url"], timeout=180)
-    resp.raise_for_status()
-    zip_path.write_bytes(resp.content)
-    print(f"[{year}] Downloaded {zip_path.stat().st_size / 1_000_000:.1f} MB -> {zip_path}")
-
-    print(f"[{year}] Unzipping {cfg['dta_file']}")
+    print(f"[{year}] Downloading {url}")
+    r = requests.get(url, timeout=180); r.raise_for_status(); zip_path.write_bytes(r.content)
     with zipfile.ZipFile(zip_path) as zf:
-        zf.extract(cfg["dta_file"], RAW_DIR)
-    dta_path = RAW_DIR / cfg["dta_file"]
+        zf.extract(f"{cfg['puf']}.dta", RAW_DIR)
+    dta = RAW_DIR / f"{cfg['puf']}.dta"
 
-    print(f"[{year}] Reading Stata file (this takes a few seconds)")
-    df = pd.read_stata(dta_path, convert_categoricals=False)
-    print(f"[{year}] Parsed shape: {df.shape[0]:,} rows x {df.shape[1]} columns")
-
-    # Validation gate: the row count must match AHRQ's documented figure.
+    rename = {c: c for c in STABLE}
+    for tpl, out in YEAR_STAMPED.items():
+        rename[tpl.format(yy=yy)] = out
+    print(f"[{year}] Reading and selecting {len(rename)} columns")
+    df = pd.read_stata(dta, convert_categoricals=False, columns=list(rename))
     if df.shape[0] != cfg["expected_rows"]:
-        raise ValueError(
-            f"[{year}] Row count {df.shape[0]:,} != expected {cfg['expected_rows']:,}"
-        )
+        raise ValueError(f"[{year}] rows {df.shape[0]:,} != expected {cfg['expected_rows']:,}")
     print(f"[{year}] Row count matches documented {cfg['expected_rows']:,}")
-
-    # Tag the source year so stacked years stay distinguishable downstream.
+    df = df.rename(columns=rename)[OUTPUT_ORDER]
     df["source_year"] = year
-
-    out_path = RAW_DIR / f"pmed_{year}.csv"
-    df.to_csv(out_path, index=False)
-    print(f"[{year}] Wrote raw CSV: {out_path} ({out_path.stat().st_size / 1_000_000:.1f} MB)")
-    return out_path
+    out = RAW_DIR / f"pmed_{year}.csv"
+    df.to_csv(out, index=False)
+    print(f"[{year}] Wrote {out} ({out.stat().st_size/1_000_000:.1f} MB)")
+    return out
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python extract/extract_meps.py <year>")
-        sys.exit(1)
+        print("Usage: python extract/extract_meps.py <year>"); sys.exit(1)
     extract_year(int(sys.argv[1]))
