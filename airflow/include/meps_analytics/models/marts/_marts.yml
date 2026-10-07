@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: dim_person
+    description: "Person-year dimension (MEPS 2017-2021): one row per person per survey year."
+    columns:
+      - name: person_year_id
+        tests: [not_null, unique]
+      - name: sex
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Male', 'Female']
+
+  - name: fct_prescriptions
+    description: "Prescription-fill fact (MEPS 2017-2021): one row per fill, mental-health flagged."
+    columns:
+      - name: person_year_id
+        description: "Foreign key to dim_person (person within a survey year)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_person')
+                field: person_year_id
+      - name: is_mental_health
+        tests: [not_null]

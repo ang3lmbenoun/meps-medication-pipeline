@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_demographics
+    description: "One row per person per year (MEPS 2017-2021), typed with demographics decoded."
+    columns:
+      - name: dupersid
+        tests: [not_null]
+      - name: sex
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Male', 'Female']
+      - name: race_ethnicity
+        tests: [not_null]
+
+  - name: stg_prescriptions
+    description: "One row per prescription-fill event (MEPS 2017-2021), typed."
+    columns:
+      - name: dupersid
+        tests: [not_null]
+      - name: therapeutic_class_1
+        tests: [not_null]

@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: meps_raw
+    database: MEPS_PIPELINE
+    schema: RAW
+    tables:
+      - name: pmed_2017
+      - name: pmed_2018
+      - name: pmed_2019
+      - name: pmed_2020
+      - name: pmed_2021
+      - name: demographics_2017
+      - name: demographics_2018
+      - name: demographics_2019
+      - name: demographics_2020
+      - name: demographics_2021
