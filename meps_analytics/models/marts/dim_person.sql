@@ -5,7 +5,9 @@ with demographics as (
 )
 
 select
-    dupersid as person_id,
+    dupersid || '_' || source_year as person_year_id,
+    dupersid,
+    source_year,
     sex,
     race_ethnicity,
     age_last as age,
